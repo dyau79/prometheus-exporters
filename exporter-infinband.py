@@ -1,3 +1,9 @@
+# Add this to your Prometheus configuration.
+#scrape_configs:
+#  - job_name: 'infiniband'
+#    static_configs:
+#      - targets: ['your_server_ip:8000']
+
 import os
 import re
 import time
