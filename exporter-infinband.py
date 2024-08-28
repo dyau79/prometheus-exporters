@@ -1,44 +1,33 @@
-# Add this to your Prometheus configuration.
-#scrape_configs:
-#  - job_name: 'infiniband'
-#    static_configs:
-#      - targets: ['your_server_ip:8000']
-
-import subprocess
+import os
+import re
 import time
 from prometheus_client import start_http_server, Gauge
 
 # Define the metrics
-RECV_BYTES = Gauge('infiniband_recv_bytes', 'Bytes received over InfiniBand')
-RECV_PACKETS = Gauge('infiniband_recv_packets', 'Packets received over InfiniBand')
-XMIT_BYTES = Gauge('infiniband_xmit_bytes', 'Bytes transmitted over InfiniBand')
-XMIT_PACKETS = Gauge('infiniband_xmit_packets', 'Packets transmitted over InfiniBand')
+IB_TX_ERRORS = Gauge('infiniband_tx_errors', 'InfiniBand TX errors', ['device'])
+IB_RX_ERRORS = Gauge('infiniband_rx_errors', 'InfiniBand RX errors', ['device'])
 
 def get_infiniband_stats():
-    try:
-        result = subprocess.run(['perfquery'], capture_output=True, text=True)
-        lines = result.stdout.split('\n')
-        stats = {}
-        for line in lines:
-            if ':' in line:
-                key, value = line.split(':')
-                stats[key.strip()] = int(value.strip())
-        return stats
-    except Exception as e:
-        print(f"Error getting InfiniBand stats: {e}")
-        return {}
+    ib_devices = {}
+    for device in os.listdir('/sys/class/infiniband'):
+        with open(f'/sys/class/infiniband/{device}/ports/1/counters/port_rcv_errors', 'r') as f:
+            rx_errors = int(f.read().strip())
+        with open(f'/sys/class/infiniband/{device}/ports/1/counters/port_xmit_discards', 'r') as f:
+            tx_errors = int(f.read().strip())
+        ib_devices[device] = {'rx_errors': rx_errors, 'tx_errors': tx_errors}
+    return ib_devices
 
 def update_metrics():
-    stats = get_infiniband_stats()
-    RECV_BYTES.set(stats.get('PortRcvData', 0))
-    RECV_PACKETS.set(stats.get('PortRcvPackets', 0))
-    XMIT_BYTES.set(stats.get('PortXmitData', 0))
-    XMIT_PACKETS.set(stats.get('PortXmitPackets', 0))
+    ib_stats = get_infiniband_stats()
+    for device, stats in ib_stats.items():
+        IB_TX_ERRORS.labels(device=device).set(stats['tx_errors'])
+        IB_RX_ERRORS.labels(device=device).set(stats['rx_errors'])
 
 if __name__ == '__main__':
     # Start up the server to expose the metrics.
     start_http_server(8000)
-    # Generate some requests.
+    
+    # Main loop
     while True:
         update_metrics()
-        time.sleep(60)
+        time.sleep(60)  # Update every 60 seconds
