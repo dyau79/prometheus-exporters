@@ -1,3 +1,5 @@
+# pip install prometheus_client
+#
 # Add this to your Prometheus configuration.
 #scrape_configs:
 #  - job_name: 'infiniband'
